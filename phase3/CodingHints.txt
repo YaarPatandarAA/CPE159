@@ -1,0 +1,70 @@
+CodingHints.txt, Phase 3 Semaphore IPC
+
+1. The new proc.c has a new version of UserProc() (see below) that uses
+semaphore services to avoid the racing condition occurred among mutliple
+processes that access the video display.
+
+2. Compare the runtime of DemoNoSem and DemoSem. Press 'n' keys a few
+times. Observe. When UserProc() is not using the semaphore there are
+the scrambled display; and when the semaphore is used, no conflicts.
+
+3. New kernel constants and types:
+   SYS_SEMWAIT 300
+   SYS_SEMPOST 301
+   WAIT in states
+   typedef struct {             // semaphore type
+      int val;                  // semaphore value
+      pid_q_t wait_q;           // waiting processes
+   } semaphore_t;
+
+
+4. kernel.c/kernel_data.h,
+   add a semaphore type, call it video_sem
+    
+5. During the OS bootstrap,
+   initialize this video semaphore with 1 as its value,
+   and 0 as the size of its wait queue.
+
+6. New in syscalls.c/.h:
+   void sys_semwait(int sem_num) and void sys_sempost(int sem_num),
+   they pass their service and semaphore numbers via CPU registers,
+   and make the system-service call.
+
+7. Program into services.c/.h the new services:
+   void SemwaitService(int sem_num) {
+      if sem_num is STDOUT:
+         if the value of video semaphore is greater than zero:
+              ---> downcount the semaphore value by one;
+         else
+              ---> "block" the running process:
+                 1. enqueue it to the wait queue in the semaphore
+                 2. change its state
+                 3. no running process anymore (lack one)
+      else (from: if sem_num is...
+         Kernl Panic: non-such semaphore number!
+   }
+   void SempostService(int sem_num) {
+      if sem_num is STDOUT:
+         if the wait queue of the video semaphore is empty:
+              ---> upcount the semaphore value by one;
+         else
+              ---> "liberate" a waiting process:
+                 1. dequeue it from the wait queue in the semaphore
+                 2. change its state
+                 3. enqueue the liberated process (ID) to the ready PID queue
+      else (from: if sem_num is...
+         Kernl Panic: non-such semaphore number!
+   }
+
+8. The loop in UserProc() should contain these:
+      sys_semwait(STDOUT);                      // if commented out?
+      sys_write(STDOUT, str, 3);
+      for(i=0; i<LOOP/2; i++) asm("inb $0x80"); // burn CPU time
+      sys_write(STDOUT, "using ", 6);
+      for(i=0; i<LOOP/2; i++) asm("inb $0x80");
+      sys_write(STDOUT, "the ", 4);
+      for(i=0; i<LOOP/2; i++) asm("inb $0x80");
+      sys_write(STDOUT, "video... ", 9);
+      sys_sempost(STDOUT);                      // if commented out?
+      sys_sleep(centi_sec);                     // sleep PID x .5 sec
+

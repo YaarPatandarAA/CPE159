@@ -1,0 +1,164 @@
+<small><i>
+Sacramento State
+<br>Computer Engineering / Computer Science
+<br>CpE/CSc159 Operating System Pragmatics (Spring 2018)
+<br>Instructor: W. Chang
+</i></small>
+
+<p>
+<center><h3>
+Phase 2 &nbsp; Intro to Kernel Service Calls
+</h3>
+</center>
+
+<b>Kernel Services</tt></b>
+<ol>
+<li>
+During the runtime, a process may call for kernel services. The system
+service calls are coded in files <b><i>syscalls.c/.h</b></i>. The duty of an
+OS is to fullfill the requests and execute the service code. While doing
+so, the process is to be supended (trapped), await for the service, and
+then be resumed. A <tt>UserProc()</tt> will make requests for three OS
+services: <b><i>sys_write()</i></b>, <b><i>sys_getpid()</i></b>, and
+<i><b>sys_sleep()</i></b>.
+To perform a service for the calling process requires the CPU to suspend
+the execution of the process in order to perform the service code. After,
+the process may either be resumed or otherwise due to the outcome of the
+service requested (I/O waits, semaphores, resources lacking, etc.).
+<li>
+Service calls are initiated by the functions coded in <b><i>syscalls.c</i></b>
+in which <i>inline</i> assembly of CPU instructions are embedded. It
+invokes the kernel via a software interrupt event; particularly, through
+the execution of the CPU instruction <i><b>int $128</i></b>.
+Different from handling a hardware interrupt such as the timer device,
+there is no PIC mask to set or IRQ to dismiss. Only the entry #128 in the
+IDT will need to carry the address of <i><b>SyscallEntry</i></b> which leads
+to the execution of the kernel and hence the service routine code.
+<li>
+The kernel service code <i><b>GetpidService</i></b> placed the PID
+(<i><b>run_pid</i></b>) in the process trapframe (<i><b>ebx</i></b>) to be
+loaded to the CPU.
+After "int $128" the process resumes inside the syscall code, e.g.,
+<i><b>sys_getpid()</i></b>, it retrieves the PID via the CPU register
+<i><b>ebx</i></b> as the function return.
+<li>
+The <i><b>TimerEntry</i></b> and <i><b>SyscallEntry</i></b> are both
+coded in <i>entry.S</i>. Each will <i>push</i> its own interrupt number
+(<i><b>intr_num</i></b>) into the process trapframe and <i>jmp</i> to a
+common routine that switch to the kernel stack and runs the kernel code.
+The intrrupt number is used in the kernel code to identify the interrupt
+for the choice of the service routine.
+<li>
+More coding details are listed in <i><b>CodingHints.txt</i></b>.
+</ol>
+
+<b>Enable Kernel Services</b>
+<p>
+
+<ol>
+<li>
+The <i><b>SYSCALL</i></b> (constant 128) is the IDT entry where the
+address of <tt><b>SyscallEntry</tt></b> in <i><b>entry.S</i></b>
+is in-placed. While TimerEntry pushes TIMER (32) SyscallEntry will
+push 128 instead. After, both jump to a common routine <i><b>EnterKernel</b></i>
+to complete the rest of the trapframe, switch stack, push the
+trapframe address like how the original TimerEntry was coded.
+<li>
+Different from the the timer interrupt, a syscall interrupt does not
+need to program the PIC mask or dismiss an IRQ. However, program files
+<i><b>syscalls.c/.h</i></b> where <b><i>asm()</i></b> macros are needed
+to have CPU instructions embedded. This includes <i><b>int $128</b></i>
+in order to "voluntarily" interrupt the process and switch the CPU to
+execute the SyscallEntry code.
+<li>
+Each syscall function should send in arguments (if any needed) to the
+kernel for the service, and receive results from the kernel (if any)
+after the service. The inline assembly of CPU instructions can do these.
+</ol>
+
+<b>Kernel Service Code</b>
+<ol>
+<li>
+Service code are collected in files <b><i>services.c/.h</b></i>.
+Based on the service number set in the register eax by the syscall.
+This will be examined in the process trapframe -- the process PCB
+has the pointer to the trapframe.
+<li>
+For the <i><b>sys_getpid()</i></b> call, the service number is
+<b><i>SYS_GETPID</i></b> (20), and <i><b>GetpidService()</i></b>
+will be called to service this. What is to be done is to return
+the running PID (<i><b>run_pid</i></b>) to the process via the
+process trapframe (register ebx) which will be loaded back by
+ProcLoader as the process resumes. The syscall code will continue
+(after <i><b>int $128</i></b>) and thus retrieve it as the funtion
+return.
+<li>
+The <i><b>sys_write()</i></b> call sends the kernel with service
+number <i><b>SYS_WRITE </i></b> (4) via CPU register eax, along
+with other needed information: <i><b>STDOUT</i></b> (1) in ebx,
+and the address of the character string to be printed in ecx, and
+the string length in edx.
+<li>
+The <i><b>WriteService()</i></b> needs to be carefully and correctly
+done. The STDOUT means the character string is to be displayed onto
+the target PC console via its VGA memory access where the video address
+<i><b>unsigned short 0xb8000</i></b> represents the top-left corner.
+There are 25 rows and 80 columns. Each position is a two-byte value
+composed by the ASCII code of the character to be displayed, and
+the video <i>mask</i> (<i><b>0x0f00</i></b>) for "boldface on black."
+The service will have its VGA pointer initially set at the top-left
+corner and it gets incremented at the displaying of each character.
+As the VGA pointer reaching the bottom-right corner, it should wrap
+back to the top-left corner. A total erasure of the whole display
+screen should be conducted before restarting from the top-left.
+<li>
+Given the number of <i><b>centi-seconds</i></b> to sleep as the function
+argument, a <b><i>sys_sleep()</i></b> call of a process will start
+<b><i>SleepService()</i></b> which updates the wake-up time in the process
+PCB by the current OS time <i><b>current_time</i></b> adding the sleep time
+requested. The state of the process is then changed to <i>SLEEP</i> and
+the running PID is reset to -1.
+<li>
+The <i><b>TimerService()</i></b> will be boosted (added) with new code which does:
+
+<ol>
+<li> upcount the current OS time (<i><b>current_time</i></b>),
+<li> check all processes (loop through the PCB array):
+<ul>
+<li> if in the SLEEP state, and the wake time matches current OS time,
+<li> then enqueue the PID to the ready PID queue, and update its state.
+</ul>
+</ol>
+
+</ul>
+</ol>
+
+<b>Deliverables</b>
+<ul>
+As before, to <i>Voyager</i> via <i>smbclient</i>, submit only source files
+(not any other files generated by SPEDE or the compiler) into your team folder
+under the folder <i>phase2</i>. Misplacement incurs penalty.
+</ul>
+
+<b>Review Questions</b>
+<ol>
+<li>
+Point out the differences between setting up and servicing of a hardware
+interrupt (such as the timer interrupt), and a software syscall?
+<li>
+Why bother to save the process trapframe pointer at the beginning of Kernel()?
+<li>
+How to check the wake time against the current OS time? Is the use of "=="
+sufficiently correct? Or, is the use of ">=" really needed?
+<li>
+What can happen with <i>your</i> current code if testing with "sys_sleep(0)"
+or "sys_sleep(-1)?" How does a real OS handle these exceptions?
+<li>
+Can the current OS time become different to the real time (wall clock) after
+a sufficiently lengthy runtime?
+<li>
+What differs a "cooperative" OS versus a "preemptive" one? What are the
+pros and cons of these two types of OS?
+
+</ol>
+

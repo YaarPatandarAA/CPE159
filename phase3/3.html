@@ -1,0 +1,119 @@
+<small><i>
+Sacramento State<br>
+Computer Engineering/Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+Instructor: W. Chang
+</i></small>
+
+<p>
+<center><big><b>Phase 3 &nbsp Semaphore Interprocess Communication</b></big>
+<br>
+<i>In Memoriam of <a href=https://en.wikipedia.org/wiki/Edsger_W._Dijkstra>Edsger
+Wybe Dijkstra</a> (1930-2002)</i>
+</center>
+
+<p>
+
+<big><b>Description and Goal</big></b>
+<p>
+<ol>
+<li>
+In this OS development phase we extend the OS services to an Interprocess
+Communication (IPC) method called <i>semaphore</i>. It provides a protocol
+for processes to collaborate and avoid the "racing/collision" conditions
+which may occur in their collective operation.
+<p>
+<li>
+To test the semaphore services, a single <i><b>semaphore_t video_sem</b></i>
+will be allocated to use by UsurProc(). A semaphore has a <i>value</i> that
+counts a control number and a <i>wait queue</i> for processes when they are
+being blocked by the semaphore control. The access to the video display of
+the target PC will be <i>guarded</i> by the video semaphore.
+<p>
+<li>
+As multiple processes access a common I/O or data region, a mechanism to
+guarantee for a mutual exclusion is required, in order to avoid any
+<i>racing</i> condition. Each process shall first reqeuest the access
+before proceeding to perform a read or write operation. If the request
+is granted (by checking a control value in the semaphore), the process
+may continue to run. When access is denied, the process will be blocked
+and placed in the semaphore wait queue.
+<p>
+<li>
+A process that first requests the semaphore shall normally later issue
+to return it after use. This may release any blocked processes (blocked
+during the two above events). The process code between requesting the
+semaphore and returning it is called the critical code section since it
+is usually where access of guarded critical data occurs.
+
+</ol>
+<p>
+
+<big><b>Semaphore Services</big></b>
+<p>
+
+<ol>
+<li>
+There are two API calls: <i><b>void sys_semwait(int sem_num)</i></b>
+to <i>request</i> to pass the semaphore control, and <i><b>void
+sys_sempost(int sem_num)</i></b> to return the usage of the semaphore.
+The two API calls subsequently evokes the run of the services of
+<i><b>void SemwaitService(int sem_num)</i></b> and <b><i>void
+SempostService(int sem_num)</b></i>.
+<p>
+<li>
+The <b><i>void SemwaitService(int sem_num)</b></i> first checks if the
+control value of the semaphore (<b><i>val</i></b>) is greater than zero.
+If so, it is downcounted, and the process is not blocked. If the control
+value is zero, the calling process will be "blocked:" its PID is enqueued
+to the wait queue in the semaphore, its state is altered to <b><i>WAIT</b></i>.
+And, the running PID is reset (no longer there).
+<p>
+<li>
+The <i><b>void SempostService(int sem_num)</b></i>, on the otherhand,
+first checks if the wait queue in the semaphore is empty. If so, it
+uncount the control value. If not empty, the 1st waiting process will
+be released: its PID is thus dequeued from the wait queue and moved to
+the ready PID queue, and its state is also updated.
+<p>
+</ol>
+
+<big><b>Deliverables</big></b>
+<p>
+
+<blockquote>
+Source code only dropped to your destinated dropbox folder on the host
+Voyager as before. Use the correct folder. Incorrect usage including
+excessive irrelevant files and folder creations will incur penalty of
+grade-point deduction!
+<br>
+Inclusion of code from past semesters will be deemed as plagiarism (<b>
+<i>F-grade warning</i></b>).
+Not meeting the OS phase requirements will incur serious grade point deduction.
+</blockquote>
+<p>
+
+<big><b>Review Questions</big></b>
+<p>
+
+<ol>
+<li>
+What is the difference of a mutex and semaphore?
+<p>
+<li>
+Enter shell command on an ECS Linux host: ipcs -l for the information
+of IPC service parametrics in the system. Where are the "config" files
+an OS administrator use to set these resources? (/etc/sysctl.conf and
+/proc/sys/kernel/sem)
+<p>
+<li>
+When a process doesn't call sys_semwait() after a sys_sempost(), may a
+deadlock likely to occur?
+How can an OS be vigilant enough to detect this conditions? Can an OS
+be effective to resolve it? Is the OS obligated to do so?
+<p>
+<li>
+What are the definition and conditions of process <i>starvation</i>,
+<i>deadlock</i>, and <i>livelock</i>? Can they be illustrated by run code?
+</ol>
+

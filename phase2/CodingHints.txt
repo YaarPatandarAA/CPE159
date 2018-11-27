@@ -1,0 +1,91 @@
+*************************************
+CodingHints.txt, Phase 2, CpE/CSc 159
+*************************************
+
+1. Add new constants:
+   SYSCALL 128
+   STDOUT 1
+   SYS_WRITE 4 
+   SYS_GETPID 20
+   SYS_SLEEP 162
+
+2. Add new kernel data elements:
+   pcb_t: int wake_time
+   state_t: SLEEP
+   trapframe_t:
+         unsigned int regs[4],
+                      ebx,
+                      edx,
+                      ecx,
+                      eax,
+                      intr_num
+                      eip,
+                      cs,
+                      efl
+
+3. Add new kernel data:
+      int current_time;
+   create it in main.c, prototype it in kernel_data.h
+   set it to 0 during the bootstrap,
+   increment it by 1 in the timer service
+
+4. Program in entry.S/.h:
+   TimerEntry pushes $TIMER and jump to EnterKernel
+   SyscallEntry pushes $SYSCALL and jump to EnterKernel
+   EnterKernel is the same code of the original TimerEntry of phase 1
+   ProcLoader has an adjustment ("skip 4 bytes" below)
+   ENTRY(ProcLoader)
+     movl 4(%esp), %ebx
+     movl %ebx, %esp
+     popa
+     addl $4, %esp // skip intr_num 4 bytes
+     iret
+
+5. During the bootstrap:
+   set current_time to zero
+   fill out the new IDT entry (SYSCALL) to get to SyscallEntry
+   
+6. Use the given proc.c, see how it calls syscalls.
+
+7. Complete the new syscalls.c/.h as how it's done (given in lecture).
+
+8. Kernel():
+   use "switch(trapframe_p->intr_num)" to
+   call TimerService when the intr_num indicates TIMER
+   call SyscallService when the intr_num indicates SYSCALL
+
+9. Add new code to services.c/.h:
+   void SyscallService(trapframe_t *p) {
+      switch on p->eax to call one the 3 services below
+   }
+
+   void GetpidService(int *p) {
+      fill out what p point to with the currently-running PID
+   }
+
+   void SleepService(int centi_sec) {
+      set wake time of running process by current OS time + centi_sec
+      alter process state
+      reset the running PID
+   }
+
+   TimerService() updated:
+      upcount OS current time (current_time)
+      loop thru the PCB array looking for (may be multiple):
+         SLEEP state processes that has its wake time arrives -> then:
+         enqueue its PID to the ready PID queue and update its state
+      (... the rest of the original code... )
+
+   void WriteService(int fileno, char *str, int len) {
+      static unsigned short *vga_p = (unsigned short *)0xb8000; // top-left
+      if(fileno == STDOUT) {
+         for each char in str {
+            *vga_p = char + color mask
+            increment vga_p
+            if(vga_p >= (unsigned short *)0xb8000 + 25*80) { // bottom-right
+               erase the whole screen
+            }
+         } // for each ...
+      } // if(fileno ...
+   }
+

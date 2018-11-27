@@ -1,0 +1,115 @@
+CodingHints.txt
+
+Phase 4 Device Driver I: Terminal Displays
+
+1. Run the demo (lab or VM version), press 'n' keys and see how they
+runs on two terminals.
+
+2. New UserProc():
+   void UserProc(void) {
+      int my_pid, centi_sec, which;
+      char str[] = "   ";
+
+      my_pid = sys_getpid();
+      centi_sec = 50 * my_pid;
+      str[0] = '0' + my_pid/10;
+      str[1] = '0' + my_pid%10;
+
+      which = (my_pid % 2)? TERM1 : TERM2;
+
+      while(1) {
+         sys_write(which, str, 3);   // show my PID
+         sys_write(which, "is ", 3);
+         sys_write(which, "using ", 6);
+         sys_write(which, "terminal", 8);
+         sys_write(which, "...\n\r", 5);
+
+         sys_sleep(centi_sec);        // sleep for .5 sec x PID
+      }
+   }
+
+
+3. The kernel will get new constants:
+   TERM1 35, interrupt and IDT entry numbers for the 1st terminal
+   TERM2 36, interrupt and IDT entry numbers for the 2nd terminal
+   BUFF_SIZE 101, the maximum bytes in each terminal I/O buffer
+
+4. The kernel has a new terminal type:
+   typedef struct {             // phase4 Dev Drv I
+      char dsp[BUFF_SIZE];      // buffer for term output
+      pid_q_t dsp_wait_q;       // PID await for term output 
+      int port;                 // port data register
+   } term_t;
+
+5. The kernel has new terminal data structures term[2]:
+   term_t term[2];
+
+6. Each term[] will be initialized (along with other kernel data):
+   first zero-ed it out
+   its 'port' is set to:
+      0x2f8 for 1st terminal (DOS calls it COM2)
+      0x3e8 for 2nd (COM3)
+      (0x2e8 for 3rd, COM4, if needed)
+
+7. The IDT gets two new entries 'Term1Entry' and 'Term2Entry'
+   placed in entries # TERM1 and TERM2 respectively
+   The PIC mask opens IRQ 0, 3, and 4. How?
+
+8. Program the new 'Term1Entry' and 'Term2Entry' in (which program file?)
+
+9. In WriteService(), if the fileno given is TERM1, use set which to 0
+   (use term[0]); if TERM2, set which to 1 (use term[1]) for the following:
+   1. the 'str' is first copied to the terminal 'dsp' buffer
+   2. and the running process is 'blocked' in the wait queue
+   3. lastly, 'TermService(which)' is called (to start service)
+
+10. The new terminal service is interrupt-driven. The caller should pass
+   'which' correctly here. Who's the caller?
+   void TermService(int which) {
+      int i, pid;
+
+      if 1st character of dsp buffer is null, return; // nothing to dsp
+
+      outportb(term[which].port, term[which].dsp[0]); // disp 1st char
+
+      conduct a loop, one by one {:
+         move each character in dsp buffer forward by 1 character
+         if we just moved a NUL, break loop
+      }
+
+      (after the above moving) if dsp[] is empty, and the display
+      wait queue has PID {
+         // str got done & there's a waiter
+         // release the waiter from the wait queue:
+            1. dequeue it from the wait queue
+            2. update its state
+            3. enqueue it to ready PID queue
+      }
+   }
+
+11. main() needs to call the subroutine below to initialize the 1st terminal:
+   void InitTerm(void) {
+      int i, j;
+
+      for(j=0; j<2; j++) { // alter two terminals
+         // set baud, Control Format Control Register 7-E-1 (data-parity-stop bits)
+         // raise DTR, RTS of the serial port to start read/write
+         outportb(term[j].port + CFCR, CFCR_DLAB);             // CFCR_DLAB is 0x80
+         outportb(term[j].port + BAUDLO, LOBYTE(115200/9600)); // period of each of 9600 bauds
+         outportb(term[j].port + BAUDHI, HIBYTE(115200/9600));
+         outportb(term[j].port + CFCR, CFCR_PEVEN | CFCR_PENAB | CFCR_7BITS);
+
+         outportb(term[j].port + IER, 0);
+         outportb(term[j].port + MCR, MCR_DTR|MCR_RTS|MCR_IENABLE);
+         outportb(term[j].port + IER, IER_ERXRDY|IER_ETXRDY);       // enable TX & RX intr
+
+         for(i=0;i<LOOP;i++) asm("inb $0x80");              // let term reset
+
+         inportb(term[j].port); // clean up buffer (extra key at PROCOMM screen)
+      }
+   }
+
+12. program a tool function "void MyStrcpy(char *dst, char *src)" so it copies
+string 'src' to string 'dst.' You can assume 'dst' has enough space to store,
+and 'src' is delimited with a null character. This tool is used by WriteService().
+

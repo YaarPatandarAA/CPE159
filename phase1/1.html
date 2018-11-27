@@ -1,0 +1,172 @@
+<small><i>
+Sacramento State<br>
+Computer Engineering / Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+Instructor: W. Chang
+</i></small>
+
+<p>
+<center><big><b>Phase 1 &nbsp; Time Sharing Kernel</b></big></center></p>
+
+<h3>Introduction</h3>
+<ol>
+<li>
+Our OS will be driven by the timer device to conduct kernel services.
+We have learned how the timer works in the previous phase. The creation,
+scheduling, and running of a simple process will be carried out.
+<li>
+There are pseudo code given in the <i><b>P-code</b></i> folder to help
+you construct this OS phase. How timer events are services will be crucial
+to the construction of this phase. The use of a process trapframe to achieve
+a CPU context switching is also required here.
+<li>
+Copy the given files can be easily done by issuing shell command "<b><i>cp
+~changw/html/159/1/P-code/* .</i></b>" Note the "dot" symbol at the end means
+that the current directory will be the destination.
+<li>
+Avoid the <i>copy-paste</i> operation from the web browser since it may
+incur unwanted <i>ctrl-M</i> characters that can cause compiler errors.
+</ol>
+<p>
+
+<h3>What's in "P-code"</h3>
+<ol>
+<li>
+The <b><i>P-code</i></b> directory contains some actual and some pseudo
+code you need to program. During the bootstrap (main) your OS needs to:
+<ul>
+<li>initialize all the kernel data the kernel needs,
+<li>iniitalize the control environment the kernel needs,
+<li>create the first process (<i>IdleProc</i>), and
+<li>load the first process to run.
+</ul>
+<p>
+<li>
+The <i>IdleProc</i> runs in an infinite loop showing its PID (0) once
+a second. The timer event also occurs from the background and triggers
+the kernel service code 100 times a second.
+<p>
+<li>
+The timer service counts the runtime of the process in order to
+monitor if it reaches a time limit. If so, the kernel would choose
+a different process to run if available. A pool of processes that
+are ready to run will have their PID's queued in the ready PID queue
+(<i>ready_pid_q</i>) to take turns to be selected to run. Our
+kernel switches among these processes using the <i>round-robin</i>
+process-scheduling policy.
+<p>
+<li>
+The kernel when detecting a special key being pressed on the target
+PC, it will service it like an event:
+   <ul>
+   <li><i><b>n</b></i>, call service <i>NewProcService()</i> to
+   create a new process.
+   <li><i><b>b</b></i>, calling breakpoint to go to the GDB prompt so
+   you can debug code or exit the whole run.
+   </ul>
+<p>
+<li>
+One thing the <i>TimerService()</i> performs is to upcount the
+<i>runtime</i> of the process (in Process Control Block, PCB)
+currently running. When it counts upto <i>TIME_LIMIT</i>, the
+process is <i>suspended</i> with its PID moved back to the ready queue.
+TimerService() also dismisses IRQ0 (like how it did in the timer lab).
+<p>
+<li>
+The <i>ProcScheduler()</i> of the kernel code dequeues the 1st
+PID from the ready PID queue as the running PID unless the queue
+is empty, then the PID of IdleProc (0) will be the running PID.
+A user process has a higher priority to run than the IdleProc.
+<p>
+<li>
+All the available PID's are initially queued in the available PID queue
+(<i>avail_pid_q</i>). The initial state is <i>AVAIL</i>. As a new
+process is created, a PID from the available PID queue is taken. Each
+PID is also an array index in both arrays: the Process Control Block
+(<b>pcb</b>) and Process Runtime Stack (<b>proc_stack</b>). To create
+a new process, the NewProcService() code initializes the PCB and creates
+a process trapframe in the process stack. The PID is then queued to the
+<i>ready_pid_q</i>. The state of process created is READY.
+<p>
+<li>
+The <i>avail_pid_q</i> is initially primed with numbers 0 to 19 (all
+the PID's available), while the <i>ready_pid_q</i> is initially empty.
+The first process to be created is the <i>IdleProc</i> process, by the
+<i>NewProcService()</i> during the OS bootstrap (main). The PID of the
+IdleProc is 0 and as an exception, 0 is not queued to the ready_pid_q,
+nor is its runtime counted in the TimerService() code.
+<p>
+<li>
+Each of the two PID queues has a 20-integer array <i>int q[]</i> and
+<i>int size</i> which indicates the number of PID's currently queued in
+the array. The code file <i><b>tools.c</i></b> is to be completed to
+facilitate the enqueue and dequeue functions, plus a <i>MyBzero()</i>
+function to clear all bytes (to 0) from a given "char *" pointer.
+<p>
+<li>
+A <i>Process Control Block (PCB)</i> contains:
+   <ul>
+   <li><i>state_t</i> <b>state</b>, process state: AVAIL, READY, or RUN;
+   <li><i>int</i> <b>runtime</b>: counting timer interrupts, reset to zero when selected to run;
+   <li><i>int</i> <b>totaltime</b>: accumulated runtime of the process after creation;
+   <li><i>trapframe_t *</i><b>trapframe_p</b>: location of the saved CPU context in the runtime stack.
+   </ul>
+<p>
+<li>
+A trapframe is first created by the <i>NewProcService()</i> code as
+the initial CPU context to load to the CPU to start the process run.
+The context of the CPU is saved into a process trapframe in the process'
+own runtime stack when an interrupt event occurs. Conversely, to resume
+the runtime of a process (or to start one) is to load the trapframe back
+to the CPU. Given the address of a trapframe, <i>ProcLoader()</i> does this.
+A simple version of the <i>process trapframe</i> contains:
+   <ul>
+   <li><i>unsigned int</i> <b>regs[8]</b>, stack space for 8 CPU registers;
+   <li><i>unsigned int</i> <b>eip</b>, where process instruction begins;
+   <li><i>unsigned int</i> <b>cs</b>, process code segment location;
+   <li><i>unsigned int</i> <b>efl</b>, CPU flags (including the interrupt flag).
+   </ul>
+<p>
+<li>
+The <i>IdleProc</i> process is created during the OS bootstrap code, in
+the <i>main()</i> function, and the instruction pointer of the CPU
+<i>eip</i> of the process trapframe points to the code of <i>IdleProc()</i>.
+For other processes created while pressing the <i>'n'</i> key their <i>eip</i>
+will point to the code of the <i>UserProc()</i> instead.
+<p>
+<li>
+The timer interrupt event must be dismissed (as how it was done in the timer lab
+exercise) at the time the service is rendered. Otherwise, the <i>PIC</i> will not
+notify the CPU for the next timer interrupt event (thinking the CPU is still busy
+with the old timer interrupt.)
+<p>
+</ol>
+
+<h3>Deliverables</h3>
+<ol>
+<li>
+By now you should have formed your OS team with others (maximum 3 persons per
+team), and mail the instructor: the OS team name and member names. Similar to
+naming a variable in program code, a team name may not use spaces or special
+symbols, and is case sensitive.
+<li>
+Submit only the source code files. Do not submit any other files generated
+by the compiler or SPEDE tools. Source files are those ending in <b><i>.c</i></b>,
+<b><i>.h</b></i>, and <b><i>.S</b></i>.
+<li>
+Penalty will apply if failing to follow the above instructions, including any
+accidental cloberring or incorrect placement of files in the dropbox folders
+of the server host Voyager.
+</ol>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+What is a process trapframe and how is it used?
+<li>
+Why <i>asm("sti");</i> is not used in phase 1? (In the timer lab we did.)
+<li>
+How can the <i>round-robin</i> process scheduling be modified to carry out
+other types of scheduling policies such as the shortest-job first?
+</ol>
+
