@@ -1,0 +1,71 @@
+Phase 0
+singama/		10
+
+Phase 1
+THESINGHS/V2  5.5/10
+Compiled OK
+Why is there a 'q' key and calling exit(0)?  -.5
+Queues not correctly cleared this way (potentially fatal)  -1
+Try using MyBzero() to clear queues  -.5
+No requirement for: setting initial state to AVAIL  -.5
+NewProcService: missing clearing up proc stack, and trapframe is not
+created at the right location (potentially fatal)  -1
+DeQ not correct (potentially fatal)  -1
+
+Phase 2
+THESINGHS  8.5/2
+
+Phase 3
+THESINGHS  4/10
+Code compiled but ran incorrectly (but see below)  <5
+SemwaitService: state changed to an incorrect state  -.5
+SempostService is not correct: overwriting/losing run_pid (fatal)  -1
+
+Phase 4
+THESINGHS  8/10
+Code compiled and ran
+Combine two similar parts of code in WriteService()  -.5
+TermService():
+   dismiss IRQ in the Kernel() (right after calling this service)  -.5
+   State changed to WAIT, not SLEEP  -.5
+   The index set in moving dsp[] is over bound  -.5
+
+Phase 5
+THESINGHS  6/10
+Compiled but when run, pressing Enter would freeze,  -2
+it also needed to echo newline  -1
+
+sys_write(): it's *str==..., not str==... (this is why it hangs at empty enter)  -1
+
+Phase 6
+THESINGHS  9/10
+Compiled and ran
+MyStrcmp() is not right (consider strings of different lengths)  -1
+
+Phase 7
+THESINGHS/V2  8/10
+Compiled and ran
+
+There's a 2nd arg in sys_signal(int, func_p_t)  -1
+
+ForkService(): need to copy all possible signal handlers in the 2nd dimension of
+   the signal table, not just SIGINT part  -1
+   
+Phase 8
+THESINGHS  9/10
+Compiled and ran
+
+WaitchildService():
+    redundant statements (do the same thing):
+       *exit_code_p = exit_code;
+       pcb[run_pid].trapframe_p->ebx = exit_code;  -.5
+    redundant statements (do the same thing):
+       pcb[run_pid].trapframe_p->ecx = child_pid;
+       *child_pid_p = child_pid;  -.5
+	   
+Phase 9
+THESINGHS  9/10
+1 day late  -1
+Compiled and ran
+
+Phase A
