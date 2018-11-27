@@ -1,0 +1,109 @@
+<small><i>
+Sacramento State<br>
+Computer Engineering/Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+</i></small>
+
+<p>
+<center><big><b>Phase 5 &nbsp;
+Device Driver II: Terminal I/O</b></big><br>
+</center>
+<p>
+
+<h3>Goal</h3>
+<blockquote>
+The goal of this phase is to learn how a device driver handles both
+input and output devices such as multiple terminals. Input events are
+asynchronous. The example is the terminal keyboard input. The demo
+runtime accepts the <i>n</i> key to create two <i>UserProc</i> processes
+that prompt to two terminals and read from them for input. The prompting
+is done in the previous phase. The input, however, is the function to
+achieve in this phase.
+</blockquote>
+<p>
+
+<h3>The <i>sys_read()</i> Call</h3>
+<ol>
+<li>
+The new <b><i>sys_read()</b></i> is provided to the user process for
+for the terminal input. The usage is similar to sys_write() where
+the input device and buffer are specified for the service.
+<p>
+<li>
+The terminal <i>interface</i> data structure
+will be increased with the keyboard input buffer and the wait queue
+associated with it. In addition, a <b><i>status</b></i> I/O location
+of the terminal port will be polled to determine if a terminal event
+is caused by its keyboard or display.
+<p>
+<li>
+The usage of the new interface components is similar to the previous
+phase. The process requesting reading from the terminal will be
+"blocked" in the terminal keyboard wait queue until the keyboard
+buffer has the input of a whole character string.
+<p>
+<li>
+The service call <i><b>void sys_read(int fileno, char *str, int len)</b></i>
+has the <i>fileno</i> which is either <i>TERM1</i> or <i>TERM2</i> (the
+1st terminal or 2nd: DOS COM2 or COM3 port). The <i>str</i> is the buffer
+to receive input, and <i>len</i> is the byte size of the buffer.
+<p>
+<li>
+As a process calls sys_read(), it will be "blocked" until a whole character
+string has been read in from the terminal keyboard. A string is completed
+at the <i>ENTER</i> key. When blocked, the process ID is in a keyboard wait
+queue of the terminal interface data structure.
+<p>
+</ol>
+
+<h3>I/O Device Driver</h3>
+<ol>
+<li>
+As a key is pressed at the terminal, it will arrive at the port data
+register. This will create an IRQ interrupt signal, and the handling
+routine will be executed to read it in.
+<p>
+<li>
+The <i><b>Upper Halves</i></b> of the device driver to handle terminals
+are <i><b>sys_read()</i></b> and <i><b>sys_write()</i></b>. They initiate
+the services with process requests. This is done by blocking the running
+process until the service is completed. Hence, there are PID wait queues
+and buffers to be filled for input or processed for output.
+<p>
+<li>
+The <i><b>Lower Halves</i></b> of the
+device drivers are <i><b>TermService()</i></b>, <i><b>KbService()</i></b>,
+and <i><b>DspService()</i></b>. The events in the hardware (ports) activate
+these to process and gather data from I/O buffers and release waiting
+processes when requests have been completed.
+<p>
+<li>
+Details of the two halves of the terminal device driver are listed out
+in the coding hints of this and previous phases.
+<p>
+</ol>
+
+<h3>Deliverables</h3>
+<ol>
+<li>
+As before, submit only source-code files (*.c *.h events.S) to your team
+dropbox on host Voyager, in the designated phase folder.
+<p>
+<li>
+All other rules declared from previous phases regarding not to mess up
+submission directories and not to conduct plagiarism also apply.
+</ol>
+<p>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+How to construct <i>library</i> calls service such as<i>GetStr()</i> and
+<i>PutStr</i> from <i>sys_read()</i> and <i>sys_write()</i>?
+<p>
+<li>
+With the above services at work, the <i>full-duplex</i> communication mode
+will be lacking. How can this issue to tackled?
+<p>
+</ol>
+

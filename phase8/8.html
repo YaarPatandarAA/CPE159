@@ -1,0 +1,117 @@
+<body bgcolor=white>
+<small><i>
+Sacramento State<br>
+Computer Engineering / Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+</i></small>
+<p>
+<center>
+<big><b>Phase 8 &nbsp; Process Life Cycle: <i>Background Running Processes</i></big></b>
+</center>
+
+<h3>Goal</h3>
+<ol>
+<li>
+To complete a process life cycle, we will need these services with
+their calls:
+<tt>int sys_waitchild(int *)</tt>, and <tt>void sys_exit(int)</tt>.
+After the creation of a child process, the parent process will normally
+immediately issue the former of the two calls above. This will suspend
+itself until a child issues the latter of the two calls above. The child
+process is thus said to run in the <i>foreground</i> like a subroutine of
+the parent, and the parent resumes after it ends.
+<p>
+<li>
+The <i>SYS_WAITCHILD</i> service blocks the calling parent process until
+any of its child processes "exits." However, with the signal handling
+capability our OS, the parent process can opt to register a signal handler
+instead waiting for a child to exit, so it can continue running.
+The signal handler will issue the call as it runs. As a child process calls
+for the SYS_EXIT service, a <i>SIGCHILD</i> event, the OS will arrange
+the parent to resume from the handler. The child process is thus called a
+<i>background</i>-running process. A typical example is to enter a shell
+command with an <i>ampersand</i> such as <i>"fork&"</i> or <i>"fork &."</i>
+</ol>
+
+<h3>Child Exits, Parent Waits</h3>
+<ol>
+<li>
+As a child process calls sys_exit() before its parent gets to call
+sys_waitchild(), the <i><b>ExitService()</b></i> will suspend the
+child process: change its state to <b><i>ZOMBIE</b></i> (not yet
+all terminated, the resources it used cannot return to the kernel)
+even though the running PID is reset. (The OS no longer has a running
+process.) As the parent subsequently calls sys_waitchild(), the
+<b><i>WaitchildService()</b></i> then reclaims all resources it uses,
+and return the information of the child PID and the <i><b>exit code</i></b>
+to the parent process.
+<p>
+<li>
+At times when the parent gets to call sys_waitchild() before a child
+exits, the parent will become in a wait state: <b><i>WAITCHILD</b></i>,
+and the running PID gets reset. As a child subsequently calls for the
+ExitService(), the parent will be released, with the child PID and exit
+code given to the parent process as the sys_waitchild() returns. And,
+all the resources the child used are to be reclaimed.
+</ol>
+
+<h3>How to Test-run</h3>
+<ol>
+<li>
+As before, <i>CodingHints.txt</i> has detail descriptions. Your
+duty is to understand what the instructions mean in building this
+OS phase which is to complete the process life cycle.
+<p>
+<li>
+Test-run the demo. Press the <i>'n'</i> key just once first. The
+SIGINT handling (<i>Ouch</i>) and the <i>fork</i> command are still
+active. Make a foreground-running child process and it will loop
+3 times showing a message about its PID and exit. During the run
+of the child process its parent process is blocked (since it called
+sys_waitchild()).
+<p>
+<li>
+Compare the runtime entering a command <i>fork &</i> which creates
+a background-running child process: both the parent and child processes
+will run in the foreground (and competing the display). As the child
+finally exits, the parent's signal handler for this event will issue
+sys_waitchild() and show a result message.
+</ol>
+
+<h3>Deliverables</h3>
+<ol>
+<li>
+Correct errors in the grading results once they get posted, or you may
+get the same error points deducted again.
+<p>
+<li>
+As before, submit only source-code files (*.c *.h events.S) to your
+team dropbox on host Voyager, in the designated phase folder.
+<p>
+<li>
+All other rules declared from previous phases regarding not to mess
+up submission directories and not to conduct plagiarism also apply.
+</ol>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+In UserProc(), why is the SIGCHILD handler be registered before the
+sys_fork() call? Can it be done after a successful fork service call?
+<p>
+<li>
+Where and when is the right place and time to alter the runtime stack
+with WrapperService() for the SIGCHILD signal?
+<p>
+<li>
+To avoid the racing condition accessing the terminal, one may deploy a
+mutex/semaphore; but this may introduce a recurrent sys_semwait() calls
+on the same mutex/semaphore by the same process since the signal handler
+can run unscheduled and it also uses the terminal.
+<p>
+<li>
+To avoid the above racing condition with one process itself: via nested
+Wrapper() insertions -- a "racing wrappers" phenomenon; can we add to
+the PCB a check to avoid such a repetition? The check is marked by
+WrapperService() and cleared at the end of Wrapper(), via some syscall.
+</ol>

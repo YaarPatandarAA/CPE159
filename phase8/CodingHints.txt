@@ -1,0 +1,148 @@
+Phase 8, CodingHints.txt, Process Life Cycle: Background Running Processes
+
+1. Test-run the demo. It starts with an 'n' key. The SIGINT handling
+   is still active, and so is the fork command. Make a foreground
+   running child process by entering 'fork.' A new child process 
+   will block its parent process. After the child exits, the parent
+   code resumes. Try it with 'fork &' instead, and both competes in
+   using the terminal to display.
+
+2. The user needs:
+   change ChildStuff:
+   void ChildStuff(int which) {  // phase6, child of UserProc runs this
+      int i;   // add this i
+      ... same as before ...
+      ... until loop changed to below ...
+      for(i=0; i<3; i++) {                 // loop 3 times and exit
+         sys_write(which, "\n\r", 2);      // next line
+         sys_write(which, "I'm the child, PID ", 19);
+         sys_write(which, str, 3);         // show my PID
+         sys_sleep(centi_sec);             // sleep for .5 sec x PID
+      }
+      sys_exit(100 - my_pid);              // exit, exit code to parent
+   }
+
+   add this as the signal handler for SIGCHILD signal/event:
+   void ChildHandler(void) {
+      int which, child_pid, exit_code;
+      char str[] = "   ";
+      child_pid = sys_waitchild(&exit_code); // block if immediately called
+      determine which terminal to use (from its own PID)
+      build str from child_pid
+      show the message (run demo to see format)
+      build str from exit_code
+      show the message (run demo to see format)
+   }       
+
+   Change UserProc:
+   void UserProc(void) {
+      ... same as before ...
+      if(MyStrcmp(cmd, "fork")) {       // phase6
+         call sys_fork()
+         if it returns -1:
+            sys_write(which, "\n\rUserProc: cannot fork!\n\r", 28);
+         else if it returns 0:
+            do ChildStuff               // child do this
+         else
+            do ChildHandler             // phase8: go waitchild immediately
+      } else if cmd is "fork&" or "fork &"
+         sys_signal(SIGCHILD, ChildHandler); // register signal handler!
+         call sys_fork()
+         if it returns -1:
+            A. sys_write(which, "\n\rUserProc: cannot fork!\n\r", 28);
+            B. sys_signal(SIGCHILD, ???);   // cancel handler, send NUL!
+         else if it returns 0:
+            do ChildStuff                   // child do this
+      }
+      sys_sleep(centi_sec);                 // sleep for .5 sec x PID
+      ... same as before ...
+
+   Update Wrapper:
+   void Wrapper(func_p_t p) {           // arg implanted in stack
+      ... all same, add last line: ...
+      asm("mov %%ebp, %%esp; pop %%ebp; ret $4"::); // lil complication
+   }
+
+3. Add constants:
+   SIGCHILD 17
+   SYS_EXIT 1
+   SYS_WAITCHILD 7
+
+4. Add process states:
+   WAITCHILD
+   ZOMBIE
+
+5. Add syscalls:
+   void sys_exit(int exit_code) {
+      asm(" // put service # to eax
+            // put exit_code to ebx
+            // call: int $128
+         :
+         :  // ...
+         :  // ...
+      );
+   }
+   int sys_waitchild(int *exit_code_p) {
+      int child_pid;
+      asm(" // put service # to eax
+            // put exit_code_p to ebx
+            // call: int $128;
+            // copy ecx to child_pid
+         :  // ...
+         :  // ...
+         :  // ...
+      );
+      return child_pid;
+   }
+
+6. Add services:
+   A. Add new cases to call ExitService(send in exit code here)
+      and WaitchildService(send in ebx and addr of ecx in the trapframe,
+      where ebx is the integer pointer -- exit_code_p in sys_waitchild()
+      and addr of ecx is addr of child_pid of sys_waitchild()
+
+   B. void ExitService(int exit_code) {       // as child calls sys_exit()
+      int ppid, *p;     // really only need these vars (besides exit_code)
+
+      if parent's state is not WAITCHILD:     // child exits early, parent late
+         a. change child's state to ?         // zombie to be reclaimed later
+         b. reset run_pid (to ?)              // no longer (resources still used)
+         c. if parent has SIGCHILD handler registered:    // redirect its runtime
+               call WrapperService(...) to do runtime redirection service
+         d. return
+
+      release parent by change its state (to ?) and enqueue it (to ?)
+      don't forget to give the parent:
+         a. the child PID exiting
+         b. its exit code
+
+      reclaim child's resources:
+         a. enqueue its PID (to ?)
+         b. clear its PCB
+         c. clear its stack space
+         d. clear its signal table entries
+
+      reset run_pid (to ?)
+   }
+
+   C. void WaitchildService(int *exit_code_p int *child_pid_p) { // parent requests
+      int child_pid, exit_code; // really only need these vars (besides args given)
+
+      search by looping thru each PCB in the PCB array:
+         if state ZOMBIE and ppid matches parent (run_pid) --> break loop (found)
+
+      if not found (loop index is over boundary of pcb[]):
+         a. change parent's state (to ?)
+         b. reset run_pid (to ?)
+         c. return
+
+      copy to parent's space:
+         1. child PID
+         2. child's exit code
+
+      reclaim child's resources:
+         a. enqueue its PID (to ?)
+         b. clear its PCB
+         c. clear its stack space
+         d. clear its signal table entries
+   }

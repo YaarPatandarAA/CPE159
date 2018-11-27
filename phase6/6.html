@@ -1,0 +1,105 @@
+<small><i>
+Sacramento State<br>
+Computer Engineering / Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+</i></small>
+<p>
+<center>
+<big><b>Phase 8 &nbsp; Process Creation: <i>Fork Service</i></big></b>
+</center>
+
+<h3>Goal</h3>
+<ol>
+<li>
+To start a life cycle of a process, enters <i>fork</i> -- the
+<i>one call, two returns</i> service: <b>int sys_fork(void)</b></i>!
+<p>
+<li>
+The <i>fork</i> service duplicates the calling process (<i>parent</i>)
+into an identical runtime copy as a <i>child</i> process that runs from
+the continuation point right after the <i>int $128</i> instruction in
+the syscall (as its parent did but will be using its own runtime stack,
+for all its own local varialbes). All I/O channels and file buffers are
+shared between the parent and child.
+<p>
+<li>
+The return of a successful fork service is the child PID for the parent
+process, but 0 for the new child process. This return is often used in
+the program code to differ the flow of the code algorithm.
+</ol>
+
+<h3>The Gory Details</h3>
+<ol>
+<li>
+Besides the allocations of a PCB and runtime stack, a child process will
+also <i>inherit</i> its parent's runtime environment which includes files
+and I/O devices. Hence, both parent and child processes share one terminal.
+<p>
+<li>
+The <i>ForkService</i> first allocates a new PID which leads to a new PCB
+and process runtime stack space. Then the PCB is cleared and set. The
+runtime stack is duplicated from the parent's process stack, including
+the trapframe which need some modifications. The location of the trapframe
+for the child process should be adjusted within its own stack (where the
+copy is). In fact, all register values originally pointing to the parent's
+stack should be adjusted.
+<p>
+<li>
+The location difference is the distance between the parent's stack and
+the child's stack. This difference should be applied to the trapframe
+pointer in the child's PCB as well as all involved registers in the
+trapframe. This includes the stack pointer <i>ESP</i>, <i>EBP</i>,
+<i>ESI</i>, and <i>EDI</i>.
+<p>
+<li>
+The EBP is the start of a chain in the calling stack all EBP locations.
+A program is compiled into using the runtime stack as frames of callers
+and callees at the runtime. Each caller/callee function operates in its
+own frame and the frame <i>base</i> is set to the register <b><i>EBP</b></i>.
+Therefore, all local identifiers and variables are located based on
+the current EBP. Hence, a chain of <i>EBP</i> values are also required
+for address adjustment, starting from the EBP in the copied trapframe,
+and where it points to (still inside the original caller's stack) will
+also be adjusted; and so forth. This is the address adjustment of the
+EBP chain.
+<p>
+<li>
+Follow carefully with the descriptions in <i>CodingHints.txt</i>
+which lists all steps in pseudo code. Run the demo so you can
+see exactly what the user process should be doing.
+</ol>
+
+<h3>Deliverables</h3>
+<ol>
+<li>
+Correct errors in the grading results posted. Or you'll get points
+deducted again.
+<p>
+<li>
+As before, submit only source-code files (*.c *.h events.S) to your
+team dropbox on host Voyager, in the designated team folder only.
+<p>
+<li>
+All other rules declared from previous phases regarding not to mess
+up submission directories and not to conduct plagiarism also apply.
+</ol>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+How does a child process <i>inherit</i> the parent's resources?
+Should the OS keep track of ownerships and usages of resources?
+<p>
+<li>
+What is the usual way a child process can get to do different
+things from its copy of its parent's code?
+<p>
+<li>
+How can we make an <i>exec()</i> service?
+<p>
+<li>
+What's a foreground-running and background-running process?
+<p>
+<li>
+Can our OS cater IPC signal services?
+</ol>

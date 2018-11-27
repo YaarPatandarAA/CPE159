@@ -1,0 +1,132 @@
+<body bgcolor=white>
+<small><i>
+Sacramento State<br>
+Computer Engineering / Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+</i></small>
+<p>
+<center>
+<big><b>Phase 7 &nbsp; Process Runtime Redirection: <i>Signal Service</i></b></big></b>
+</center>
+
+<h3>Goal</h3>
+<ol>
+<li>
+Here our OS will cater the famed <i>SYS_SIGNAL</i> service. The purpose
+is to activate a user routine upon a certain event. The event is a <i>signal</i>,
+e.g., at the time the <i>ctrl-C</i> key is pressed or a child process
+exiting. (Shell command <i>kill -l</i> lists signal names, defined in
+<i>/usr/include/bits/signum.h</i>).
+<p>
+<li>
+The syscall <i><b>sys_signal(int signal, func_p_t p)</b></i> requests the
+OS to redirect the process' own runtime to the function (pointed by p)
+once the signal occurs, and then back to the original runtime. Otherwise,
+a default kernel routine will be used (e.g., ctrl-C interrupts and
+terminates a process runtime).
+<p>
+<li>
+The given <i>Ouch()</i> code will be the signal handler for the
+signal <i>SIGINT</i>. The <i>UserProc</i> process will register this
+routine first by a <i>sys_signal()</i> call (before its loop). The execution
+of Ouch() will <i>automatically</i> occur once the user presses the
+<i>ctrl-C</i> key.
+Since a child process inherits almost everything from its parent, the
+signal handling capability is also duplicated. Therefore, during the
+process creation (ForkService), the parent's <i>signal table</i> is copied
+to the child's.
+</ol>
+
+<h3>Process Stack Alteration</h3>
+<ol>
+<li>
+In order to redirect the runtime of a process, the runtime stack
+is altered. As the event of a signal occurs, the original point to
+resume (<i>eip</i> in the trapframe) is replaced by the user's signal
+handling routine (<i>signal handler</i>), while the original <i>eip</i>
+will be inserted atop (above) the trapframe. As the signal handler
+ends the <i>ret</i> instruction <i>pops</i> it.
+Hence, the trapframe in the stack needs be lowered in memory to
+spare a space to insert the original <i>eip</i>.
+<p>
+<li>
+However, this means the signal handler will be using the register
+values in the original trapframe. This may cause them to change.
+Ideally, a <i>pusha</i> and <i>popa</i> instructions are needed
+before and after the execution of the signal handler, so the register
+values from the trapframe can be returned when resuming in UserProc.
+<p>
+<li>
+For the aforementioned reason, a <i>wrapper</i> function is needed
+to <i>wrap</i> around the user's handling routine. It will: <i>pusha</i>,
+call the user's handling routine, and <i>popa</i>. And as the wrapper
+returns, it resumes in UserProc() with the original set of registers.
+Therefore, a <i>void Wrapper(func_p_t p)</i> function is actually
+resumed and it calls the passed argument which is the user's handling routine.
+To <i>implant</i> the address of the routine, the address should be
+(the second item) above the stack pointer as the wrapper runs.
+(This is also how Kernel and ProcLoader get arguments.)<pre>
+      The diagram of the runtime stack of UserProc:
+      ... stuff stacked while running UserProc ...
+
+      below was trapframe of UserProc, altered into:
+  --> ... addr of Handling Routine (as argument to Wrapper) ...
+  --> ... eip back to UserProc (original eip in trapframe) ...
+
+      below was the moved trapframe with eip = Wrapper, after trapframe popped:
+      ... ebp of UserProc saved (came from trapframe actually) ...
+      ... stuff by pusha of Wrapper ...
+      ... eip back to Wrapper (calling Handling Routine) ...
+      ... ebp of Wrapper saved ...
+      ... stuff stacked while running Handling Routine ...
+      then: mov bp, sp; pop bp; ret
+      back to wrapper: popa; mov bp, sp; pop bp; ret (back to UserProc)</pre>
+<p>
+<li>
+Run the demo, and follow the <i>CodingHints.txt</i> carefully.
+</ol>
+
+<h3>Deliverables</h3>
+<ol>
+<li>
+Correct errors in the grading results once they get posted or you will
+get points deducted again.
+<p>
+<li>
+As before, submit only source-code files (*.c *.h events.S) to your
+team dropbox on host Voyager, in the designated phase folder.
+<p>
+<li>
+All other rules declared from previous phases regarding not to mess
+up submission directories and not to conduct plagiarism also apply.
+</ol>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+Howcome there's only a caret character shown when pressing the
+ctrl-C key, not '^C' like a normal computer?
+<li>
+Should the key-in buffer be cleared once a ctrl-C is pressed?
+Or, it continue with the current content. What happens to
+the buffer if ctrl-C is the 1st keystroke after being prompted?
+(Will there be residual characters from the previous entry? If
+so, will this treated like a repeated command?)
+<p>
+<p>
+<li>
+How can the process request to cancel its signal handler?
+<p>
+<li>
+How can a default signal handler be recovered (such as SIGINT)
+after the user process changed it with the Signal() service?
+<p>
+<li>
+How can signal <i>SIGCHLD</i> be used to construct background
+running parent processes (e.g., shell commands "... &")?
+<p>
+<li>
+Do you know these signal-related services: <i>pause()</i>,
+<i>raise()</i>, <i>kill()</i>, <i>signal()</i>, <i>atexit()</i>,
+<i>wait()</i>, <i>wait3()</i>?
+</ol>

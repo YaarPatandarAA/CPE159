@@ -1,0 +1,75 @@
+CodingHints.txt, phase 6 -- Fork Service
+
+1. Change the user process to:
+   void ChildStuff(int which) {  // which terminal to display msg
+      1. get my PID
+      2. calcalute sleep period (multiple of .5 seconds times my PID)
+      3. build a string based on my PID
+      4. loop forever:
+         a. show the msg (see demo for exact content, use multiple sys_write() calls)
+         b. and sleep for the period of time
+   }
+   void UserProc(void) {
+      in the forever loop:
+      ...
+      after reading 'cmd'
+      use MyStrcmp() to check if 'cmd' matches "fork"
+      if so,
+         1. call for the fork syscall which returns a pid
+         2. if the pid is:
+            a. -1, show error message (OS failed to fork)
+            b. 0, child process created, let it call ChildStuff(which)
+            c. >0, build a str from pid and show it (see demo for exact content)
+      ...
+   }
+
+2. About constants and types:
+   add a new constant: SYS_FORK 2
+   add a new place for informtion of parent process ID (ppid) in the PCB
+   replace regs[4] in the trapframe type with (from the top):
+      (unsigned int)
+         edi,
+         esi,
+         ebp,
+         esp,
+         ... (ebx and others unchanged below)
+
+3. Add a new syscall:
+   int sys_fork(void)
+
+4. Add new kernel service code:
+   void ForkService(int *ebx_p)
+      if there's no available PID left:
+         set what ebx_p points to to -1
+         show an error (Kernel Panic) msg
+         return
+
+      get a new child PID (set as what ebx_p points to)
+      enqueue the PID to be ready to run
+
+      initialize child's PCB:
+         clear all of it 1st
+         set its state
+         set its ppid
+
+      duplicate parent's runtime stack to child's stack
+
+      set the ebx in the child's trapframe to 0 (so the syscall
+      will return 0 for the child process)
+
+      calculate the address difference between the two stacks, and
+      apply it to these in child's trapframe: esp, ebp, esi, edi
+
+      (the following is the treatment for address changes of copied local
+      variables such as the returned pid which apperas in both parent and child)
+      about the ebp register in the child's trapframe:
+         set an integer pointer p to the value what ebp points to
+      loop on the condition that: the value what p points to is not 0:
+         adjust what it points to with the address difference, and
+         set p to this newly adjusted address, and
+         loop again
+
+5. Add new tools:
+   int MyStrcmp(char *s1, char *s2)
+   void MyMemcpy(char *dst, char *src, int bytes)
+

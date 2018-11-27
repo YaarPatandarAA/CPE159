@@ -1,0 +1,69 @@
+Phase 7, CodingHints.txt, Process Runtime Redirection
+
+1. While run the demo, press 'n' and then ctrl-C. The message comes
+   user code but is not being directly called.
+
+2. Add into proc.c/.h these:
+   modify UserProc() where before it loops, call sys_signal() to
+   register Ouch() as the routine to handle signal SIGINT (ctrl-C)
+
+   void Wrapper(func_p_t p) {           // arg implanted in stack
+      asm("pusha");                     // save regs
+      p();                              // call user's signal handler
+      asm("popa");                      // pop back regs
+   }
+
+   void Ouch(void) {                               // signal handler
+      int ppid, which;
+
+      ppid = sys_getppid();               // follow parent
+      if (ppid == 0) ppid = sys_getpid(); // no parent, use own PID
+
+      which = ppid % 2 ? TERM1 : TERM2;
+      sys_write(which, "Ouch, don't touch that! ", 24);
+   }
+
+3. add new constants:
+      SYS_SIGNAL 48         // signal service #
+      SIGINT 2              // signal ctrl-C is 2
+      SIG_NUM 32            // 32-bit OS has 32 different signals
+      ... (one more?) ...
+
+4. delclare new kernel data, and initialize them all null:
+      func_p_t signal_table[PROC_NUM][SIG_NUM];
+
+5. add new sys_signal() call to send to the kernel a signal name
+   and the address of a handler routine
+
+6. add new service code:
+   void SignalService(int ..., func_p_t ...) so it will
+   register the address of the function in the signal table
+   for the requesting process
+
+7. in KbService(), once a character is read in:
+   if it's ctrl-C (ASCII 3) {
+      A. if there's a waiting process in KB wait queue {
+         a. release the waiting process: steps 1-2-3
+         b. if it had a handler routine registered for this:
+               call WrapperService(its PID and address of handler)
+         c. else:
+               echo back to terminal a caret '^'
+      }
+      B. return;
+   }
+
+8. add new void WrapperService(int pid, func_p_t p):
+   a. copy process trapframe to a local/temporary trapframe
+   b. lower the trapframe location info (in PCB) by 8 bytes
+   c. copy temporary trapframe to the new lowered location
+   d. the vacated 8 bytes: put 'p' and 'eip' of the old trapframe there
+   e. change 'eip' in the copied trapframe to address of Wrapper()
+
+9. in ForkService(), the child also inherits the parent's signal
+   table (by copying over the associated entries in the table)
+
+10. Oh, we also need a sys_getppid() in order to let Ouch() choose
+    the same terminal as its parent. So, a new service is needed.
+    Check the Linux system service call references for the info of
+    the constant number to use, would you?
+

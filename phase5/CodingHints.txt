@@ -1,0 +1,71 @@
+CodingHints.txt, Phase 5, Device Driver II: Terminal I/O
+
+1. Run demo with 1 or 2 terminals. UserProc() use new code below.
+   add on top: char cmd[BUFF_SIZE], and the loop changes to:
+   while(1) {
+      sys_write(which, "\n\r", 2);      // get a new line
+      sys_write(which, str, 3);         // to show my PID
+      sys_write(which, "enter ", 6);    // and other msgs
+      sys_write(which, "shell ", 6);
+      sys_write(which, "command: ", 9);
+      sys_read(which, cmd, BUFF_SIZE);  // here we read term KB
+      sys_write(which, "You've entered: ", 16);
+      sys_write(which, cmd, BUFF_SIZE); // verify what's read
+      sys_sleep(centi_sec);             // sleep for .5 sec x PID
+   }
+
+2. These are new constants:
+   SYS_READ 3           // read from term KB
+   DSP_READY IIR_TXRDY  // term display ready
+   KB_READY IIR_RXRDY   // term KB input arrives
+
+3. Add to the existing terminal data type:
+   char kb[BUFF_SIZE];       // buffer what comes from term KB
+   pid_q_t kb_wait_q;        // PID awaits for term KB
+   int status;               // event type indicator
+
+4. Add to the kernel data initialization:
+   term[0].status = 0x2f8 + IIR;   // intr indicator reg
+   term[1].status = 0x3e8 + IIR;
+
+5. Add two new functions to tools.c/.h:
+   1. given a character string, move all characters in it toward the
+      beginning by one position
+   2. given a character and a string, append the character to the string
+
+6. Update the collection of syscalls:
+   1. make sys_write() to simply return when given an empty string (test NUL)
+   2. add a new sys_read() with the same format of sys_write()
+
+7. The new ReadService(...) only needs to:
+   determine which term_t to use (from the given argument)
+   "block" the running process to the terminal keyboard wait queue
+
+8. Since TermService() can also be activated by its keyboard, it has
+   to know the nature of the event by polling the 'status' of the port
+   to call either DspService() to handle the output, or KbService() to
+   handle the terminal keyboard input:
+      1. read the 'status' of the port
+      2. if it's DSP_READY, call DspService()
+      3. if it's KB_READY, call KbService()
+
+9. DspService() does the same work of the TermService of the previous phase:
+      1. if dsp[] of the terminal data structure is empty, just return
+      2. (not returning, continue) outportb() the 1st char in dsp[]
+      3. move all characters in dsp[] forward by one pos (use tool)
+      4. if dsp[] becomes empty after moving and there appears a waiting
+         process in the dsp wait queue of the terminal, 'release' it
+
+10. KbService() does handling terminal key-in character, one by one:
+      1. read a character from the 'port' of the terminal
+      2. also write it out via the 'port' of the terminal (to echo back)
+      3. if what's read is NOT a '\r' (CR) key, append it to kb[] string
+         of the terminal (use tool), and just return
+      4. (not returning, continue) echo back '\n'
+      5. if there appears a waiting process in the kb wait queue of the
+         terminal, release it and copy the kb str to it (use MyStrcpy)
+      6. reset the terminal kb string (put a single NUL at its start)
+      
+11. At the end of the WriteService(), change it to calling DspService()
+    instead since that function changed name from the previous phase
+
