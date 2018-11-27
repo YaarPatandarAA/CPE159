@@ -1,0 +1,53 @@
+CodingHints.txt, phase9, real memory space, SYS_EXEC service
+
+The demo files will appear to run the same as the previous phase:
+   Demo166666.dli (suitable for virtual machine)
+   Demo1666666.dli (suitable for real machine)
+
+Modify proc.c:
+   a child, after being forked, call sys_exec(ChildStuff, which)
+   to run the same code: void ChildStuff(int which), except in a
+   totally separate DRAM space (outside of MyOS.dli).
+
+Add to syscalls.c/.h:
+   the code, void sys_exec(func_p_t p, int arg) { ...
+
+Rename syscalls.c to proc_syscalls.c (but not syscalls.h) so their
+directory listing will be close. After MyOS.dli is built, the
+locations of their function will be jumpable within small memory.
+
+Add new constants:
+   SYS_EXEC 11         (new service #)
+   PAGE_BASE 0xe00000  (MyOS.dli ends at byte 14M-1, 0xdfffff)
+   PAGE_NUM 20         (only 20 DRAM pages to experiment)
+   PAGE_SIZE 4096      (each DRAM page is 4KB in size)
+
+PCB needs a new integer 'page' to record the page # used by the process
+
+The kernel needs a new data queue: pid_q_t page_q (to queue page #'s)
+
+Add/modify into services.c:
+   There's a new case to call the new service ExecService(..., ...)
+
+   ExitService and WaitchildService reclaim resources including the
+   DRAM page the exiting/zombie child process used by enqueue the
+   same page # back to the page queue, and zero-out the pag content
+
+   The void returning ExecService is called with two arguments:
+      1. addr of a function 'p' to switch running to there
+      2. an integer argument 'arg' for the function to get when it runs
+
+      dequeue from the page queue for a page #
+      if we got -1: kernel panic msg, return (cannot continue)
+
+      record the good page # into the PCB of the calling process
+      calculate the page addr location from the page #
+
+      mem-copy to the DRAM page from 'p' (for number of PAGE_SIZE bytes)
+
+      place 'arg' at the topmost 4 bytes within the DRAM page, then
+      a zero under it, then followed by the trapframe with the eip
+      changed to point to the start of the DRAM page where the copy
+      of code starts (do not change eip to 'p')
+
+      don't forget to change trapframe addr in PCB!

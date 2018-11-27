@@ -1,0 +1,118 @@
+<body bgcolor=white>
+<small><i>
+Sacramento State<br>
+Computer Engineering / Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+</i></small>
+<p>
+<center>
+<big><b>Phase 9 &nbsp; Real Memory Space: <i>Exec,</i> Minion of Fork</big></b>
+</center>
+
+<h3>The Goal</h3>
+<ol>
+<li>
+In this OS phase, the DRAM resource will be managed by our kernel.
+It will be allocated to create new processes by the unit of memory
+page.
+<li>
+<p>
+A new <tt>SYS_EXEC 11</tt> service will be used for a new forked
+child to request a new space for new runtime code. This is also
+how an external shell command is done, by having a child process
+first forked and then <i>execute</i> a separate compiled program
+code. We will continue to use the same child code from the previous
+phase except now it will be run independently with its own runtime
+space for its code, data, and stack; all outside of <i>MyOS.dli</i>.
+<p>
+<li>
+The new kernel service call is <i><b>void sys_exec(func_p_t p, int
+arg)</b></i> where <i>p</i> is the address of <i>ChildStuff()</i>
+and <i>arg</i> is its argument (either <i>TERM1</i> or TERM2</i>)
+inherited from the parent code. In order to create a process with
+an argument, the argument must be asserted above its initial 
+trapframe for it to obtain it when run. This is similar to how
+the <i>wrapper</i> can get an argument when running in the previous
+OS phase.
+<p>
+</ol>
+
+<h3>Memory Mangement</h3>
+<ol>
+<li>
+Memory are DRAM pages, managed by our OS to allocate for processes.
+The OS will maintain the usage information, namely, by a single
+<b><i>page_q</i></b> (same as the pid_q_t).
+<p>
+<li>
+During the OS bootstrap, all page numbers will be queued into the
+<i>page_q</i>. Each number is associated with a DRAM address which
+is based on a 4KB (4096B) interval starting at 14MB (0xe00000), i.e.,
+page number 0 starts at address 0xe00000, page 1 at 0xe01000, page 2
+at 0xe02000, etc. Hence, by the page number, the address can be
+calculated immediately when needed.
+<p>
+<li>
+The PCB will record the page numbers used by the process when each
+page is being allocated (dequeued from <i>page_q</i>), and returned
+(enqueued back to <i>page_q</i>). Therefore, beside the page_q
+and extra information in the PCB, there are no special data structures
+needed to manage the memory resource for this OS phase.
+<p>
+</ol>
+
+<h3>Exec Service</h3>
+<ol>
+<li>
+As a process is serviced, a DRAM page will be allocated to copy in
+the program code, and the trapframe will also be copied to into
+this page as well, but with the instruction pointer altered to
+point to the new program code. Hence, the process will start
+from the new code.
+<p>
+<li>
+However, if an argument is to be passed to the child process to
+use it, the service must lower the trapframe by two <i>notches</i>
+(for the same reason as that in the previous OS phase) in order
+to insert the argument (and a NUL -- voided return address) right
+above the trapframe.
+<p>
+<li>
+The Wait and Exit services now must also reclaim both the DRAM
+page when the child finishes using. Thes page number information
+is in the PCB of the child.
+<p>
+<li>
+The need to rename <i>syscalls.c</i> to <i>proc_syscalls.c</i>
+is to have syscall function code closer to the child process
+code, to fit into the single 4KB DRAM space. Otherwise, the
+syscalls are too far to jump to.
+</ol>
+
+<h3>Test Run Demo</h3>
+<ol>
+<li>
+The demo files will run the same way as those in the prevous phase.
+</ol>
+
+<h3>Deliverables</h3>
+<ol>
+<li>
+As before, submit only source-code files (*.c *.h events.S) to your
+team dropbox on host Voyager, in the designated phase folder.
+<p>
+<li>
+All other rules declared from previous phases regarding not to mess
+up submission directories and not to conduct plagiarism also apply.
+</ol>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+What can be the reason of having DRAM resource leaks?
+<p>
+<li>
+Why do we need to rename syscalls.c? What if we do not rename it?
+Are there alternatives such as the child process code does not rely
+on external identifiers?
+</ol>

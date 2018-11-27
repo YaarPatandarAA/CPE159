@@ -1,0 +1,231 @@
+<html><head><title>CpE/CSc 159 Phase A Virtual Memory
+</title></head>
+<body bgcolor=white>
+<small><i>
+Sac State, Computer Engineering/Computer Science<br>
+CpE/CSc 159 Operating System Pragmatics (Spring 2018)<br>
+Instructor: W. Chang
+</i></small>
+
+<p>
+<center>
+<big><b>Phase A Virtual Memory, the Wide Open Runtime Space</b></big><br>
+<i>"Dreaming sleeping on an open prairie, and waking up, but to where?"</i>
+<br>
+<i>"Walk into a babling brook, step in; water flows away and not found!"</i>
+</center>
+
+<h3>Goals</h3>
+
+<ol>
+<li>
+In the previous OS phase a new process can run within a confined
+4KB memory page. In this phase a virtual space of 1GB will be given,
+ranging from byte 500M (VM_START, 0x20000000) to byte 1.5G-1
+(VM_END, 0x5fffffff).
+<p>
+<li>
+Virtual space is supported by real DRAM pages but only partially for
+current runtime of processes. The hardware device that translates
+virtual addresses is the <i>Memory Management Unit (MMU)</i>. Each
+address the CPU uses to fetch instruction or access data is to be
+first translated by the MMU <i>on the fly</i> before giving to the
+cache system to check whether it is a cache hit, etc.
+<p>
+<li>
+The process created by the <i>SYS_EXEC</i> service will become virtual.
+The instruction of the process will start from VM_START (0x20000000),
+and the process stack will end at VM_END (0x5fffffff), 1 GB.
+<p>
+<li>
+In ExecService() the translation table (<i>TT</i>) the MMU needs will be
+created. When a virtual process is selected to run, before ProcLoader(),
+the MMU will be given the translation table by: <i>set_cr3(pcb[run_pid].TT)</i>.
+And when the process ends, the MMU will be given back the original TT
+(<i>OS_TT</i>) to use.
+<p>
+<li>
+The OS_TT is created during the OS bootstrap for the kernel to use. The
+first 4 entries of it will be part of the newly created TT for the virtual
+process in order to map to the area of the kernel services.
+</ol>
+
+<h3>Virtual Address Translation</h3>
+<ol>
+<li>
+The Intel MMU uses a <i>two-tier</i> translation procedure: the first
+10 bits in the 32-bit virtual address is taken as the entry number of
+a main translation table to get the real address of a <i>subtable</i>.
+And, the next 10 bits in the virtual address is the entry number of
+the subtable to get the real address of a DRAM page to get the address
+of an instruction or data. The rest 12 bits in the virtual address are
+not changed (as the byte number in the DRAM page).
+<p>
+<li>
+The PCB will need an <b><i>int TT</b></i>, the address of the main
+translation table for the process, and <i><b>int page[5]</b></i> to
+record 5 DRAM page numbers in use. If the TT in PCB is not NUL, call
+<i>set_cr3()</i></b> to set MMU before calling ProcLoader(), in order
+to have the virtual address VM_TF (PCB trapframe address) translated.
+<p>
+<li>
+A valid entry in the main table is set with a real address of a subtable
+(which occupies a whole DRAM page), and, a valid entry in a subtable is
+set with a real address of a DRAM page carrying process instructions or
+runtime stack. Entries not yet set are invalid, and the MMU will issue
+a <i>not-present</i> page-fault CPU exception. Therefore, there are
+flags like <i>valid</i> in each entry of a table to be set as the table
+is created. More on setting flags below.
+<p>
+<li>
+The ExecService() will start by allocating five (not one) DRAM pages
+to create a main address-translation table (<i>TT</i>), one instruction
+table (<i>IT</i>), one stack table (<i>ST</i>), , one instruction page
+(<i>IP</i>) and one stack page (<i>SP</i>). A table has 1024 entries
+and each entry is 4 bytes in size so a table is 4KB (a DRAM page).
+<p>
+<li>
+Two entries in TT point to IT and ST. Since the virtual space starts
+at 0.5GB (0x20000000B) and its first 10 bits will be read by MMU as
+entry number 0010 00000 00<sub>2</sub> to look into TT for a DRAM address
+where IT is, and the next 10 bits of 0.5G (00 0000 0000) is read as the
+entry number in IT to get where IP is, and the rest 12 bits of 0.5G
+is the address into this IP, to get an instruction.
+<p>
+<li>
+The process argument and trapframe will be created at the end of the
+virtual space (VM_END, 0x5fffffff) in which the 1st 10 bits 
+0111 0000 00<sub>2</sub> is the entry number of TT for address of ST;
+the 2nd 10 bits 11 1111 1111<sub>2</sub> is the entry number of ST for
+address of SP; and the rest 12 bits are address in SP to fetch data.
+<p>
+<li>
+The beginning 4 entries of OS_TT will be copied to the process TT when
+making it. The SPEDE function <i>int get_cr3()</i> will obtain this address
+during kernel data initialization. When reclaiming DRAM pages of a process
+the MMU should switched back to OS_TT, otherwise, the computer will reboot
+since the translation tables is lost (as the TT page is being erased).
+<p>
+<li>
+The EIP in the virtual process trapframe should be set at VM_START
+(0x20000000), and the process trapframe address in its PCB should be
+set to <i>VM_TF</i>, a constant that is 1.5G (0x60000000) minus the
+size of the trapframe and two integers (for an argument and NUL).
+</ol>
+
+<h3>MMU Translation Mechanism</h3>
+
+<ol>
+<li>
+The Intel MMU uses a 2-tier translation scheme (a main table paired with several
+subtables), in order to occupy less DRAM space: given a 32-bit virtual address,
+it is read into 3 parts:
+the first 10 bits (TT entry number), the second 10 bits (IT/ST entry number),
+and the rest 12 bits (byte offset in the instruction/stack page):
+   <ol type=i>
+   <li>TT has 6 valid entries (pointing to 6 subtables). The first 4 entries are
+       copied from OS_TT. Other 2 entries hold addresses of IT and ST.
+   <li>IT: the 1st entry holds the address of IP.
+   <li>ST: the last entry holds the address of SP.
+   <li>IP has the process instructions.
+   <li>SP has the process trapframe (EIP set to VM_START), and the process argument.
+   <li>PCB trapfrme pointer points to VM_END minus the size of a trapframe and two integers.
+   </ol>
+<p>
+<li>
+Before a process is loaded to run in kernel(), use <i>set_cr3()</i> to
+inform the MMU to swtich TT if the TT the process has is not NUL.
+<p>
+<li>
+Since each DRAM page is at an intervals of 4K bytes in the memory, only
+the first 20 bits in an address may change. The unchanged 12 bits (zeros)
+are used in a table entry as the attribute flags for the DRAM page the
+address points to. The rightmost 7 flags are:
+<ol type=a>
+<li><tt>PRESENT</tt>, 0: page not present, 1: page present.
+<li><tt>RO / RW</tt> , 0: page is read-only, 1: read-writable
+<li><tt>USER MODE</tt>, 0: superuser to access, 1: user can access
+<li><tt>CACHE POLICY</tt>, 0: write back; 1: write-through (if cache-use set)
+<li><tt>CACHE USE</tt>, 0: page content not to be cached, 1: to be cached
+<li><tt>ACCESSED</tt>, 0: entry never looked up by MMU, 1: accessed
+<li><tt>DIRTY</tt>, 0: page content not changed/written, 1: changed/written
+</ol>
+<p>
+<li>
+We will only set the RW and Present flags to 1. Others 0. This is done in
+ExecService() as each entry is being initialized during the creation of
+TT, IT, and ST.
+<p>
+<li>
+The target PC will reboot once a conflict against any flags occur during
+the runtime: "page not present, write to a read-only page, process in the
+user mode accessing kernel-mode page, etc. Hence, use GDB to verify each
+entry is correctly set at the end of ExecService().
+<p>
+<li>
+Services for sys_exit() and sys_waitchild() will need to deal with the
+complications caused by virtual space: since a <i>zombie</i> child no
+longer runs, the translation table will need to be switched back to the
+original OS' table. In order to reference into the child's virtual space
+to get the exit code by WaitchildService(), the MMU will need the child's
+translation table briefly to resolve the virtual address of the trapframe
+location in child's PCB.
+</ol>
+
+<h3>Demo Run</h3>
+<blockquote>
+The demo runs exactly like the previous phase, but the code is a lot more
+sophisticated. The virtual memory requires the management of DRAM pages
+and correctly switching translation tables.
+</blockquote>
+
+<h3>Deliverables</h3>
+<ol>
+Source files as usual, other restrictions and requirements of not conducting
+plagiarism as usual (see the deiverable description in previous phases).
+</ol>
+
+<h3>Review Questions</h3>
+<ol>
+<li>
+Where in your programs the get_cr3() and set_cr3() functions are used?
+<p>
+<li>
+What are the type of page faults that may occur as the MMU looks
+into a table entry during an address translation?
+<p>
+<li>
+How to write code to trigger page faults so it will need new pages
+allocated during runtime? How should your OS handle this? Wouldn't
+the recovery of a page fault requires rolling back the instruction
+pointer to retry the intruction?
+<p>
+<li>
+What is the pragmatic purpose of the 2-tier translation scheme?
+<p>
+<li>
+What are the functions of the UNIX "pagedaemon" and "swapper" processes?
+<p>
+<li>
+How can our OS maintain a healthy proportion of DRAM space not used?
+How can LRU counts be implemented? How to indicate a page was swapped
+out in the swap space (not brand new)?
+<p>
+<li>
+Can translation tables also be subject to swapped in and out with a
+"swap disk partition" like normal process pages?
+<p>
+<li>
+The MMU has TLB to cache table entries. The instruction and data are
+cached separately. Should the search for a cache hit be based on a
+virtual or real address?
+<p>
+<li>
+Information interchanged between two virtual processes, in kernel
+services such as the exit code. What if the parent exit_code_p is
+also a virtual address?
+<p>
+<li>
+How to service shared memory pages (shared-memory IPC)?
+</ol>
+

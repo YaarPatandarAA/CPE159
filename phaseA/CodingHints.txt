@@ -1,0 +1,101 @@
+CodingHints.txt, phaseA Virtual Memory
+
+Add constants:
+   VM_START 0x20000000   // VM starts at addr 500MB
+   VM_END 0x5fffffff     // VM ends at addr 1.5GB
+   VM_TF VM_END minus size of trapframe and 2 integers (then plus 1 byte)
+
+Kernel has a new data point:
+   int OS_TT for the translation table that the OS uses
+   and this will be initialized during the kernel data
+   initialization by a get_cr3() call
+
+Add to PCB type:
+   an integer 'TT' to save the address of the process Translation
+   Table (TT) during the table creation in ExecService(), also
+   expand the single 'page' to an array of five to record page
+   numbers of 5 DRAM pages since each virtual process needs 5 pages
+
+Add to kernel():
+   at the end before loading the process, check if the TT in
+   the PCB of the selected process is NUL or not, if not NUL,
+   call set_cr3() with this TT (to swtich the table MMU is using)
+
+Services.c:
+   in ExitService() and WaitchildService(), while reclaiming
+   the resources of a terminating process, the 5 DRAM pages
+   (not just one) must be reclaimed (MMU must first be set
+   back to use OS_TT)
+
+ExecService()
+   0. Need to first allocate 5 DRAM pages from the page queue.
+      Place the page numbers in the page array in process PCB.
+      The 5 pages are: TT, IT, ST, IP, and SP.
+      Record the TT page address to PCB.
+
+   1. Build the main Translation Table (TT) -- 6 entries to add:
+      Clear all entries in TT (MyBzero it).
+      Copy to TT (1st 4 entries) from OS_TT (1st 4 entries).
+
+      Use an integer pointer q to point to the address of TT first.
+
+      Get an entry number from the 1st 10 bits of VM_START.
+      Set what the entry points to (based on q) = IT address bitwise-or
+         with 0x003 (two of the flags).
+
+      Get an entry number from the 1st 10 bits of VM_END.
+      Set what the entry points to (based on q) = ST address bitwise-or
+         with 0x003 (two of the flags).
+
+   2. Build the Instruction Table (IT) -- 1 entry to add:
+      Clear all entries in IT (MyBzero it)
+      Use an integer pointer q to point to the address of IT first.
+      Get an entry number from the 2nd 10 bits of VM_START.
+      Set what the entry points to (based on q) = IP address bitwise-or
+         with 0x003 (two of the flags).
+
+   3. Build the Stack Table (ST) -- 1 entry to add:
+      Clear all entries in ST (MyBzero it)
+      Use an integer pointer q to point to the address of ST first. 
+      Get an entry number from the 2nd 10 bits of VM_END.
+      Set what the entry points to (based on q) = SP address bitwise-or
+         with 0x003 (two of the flags).
+
+   4. Make the Instruciton Page (IP):
+      Copy instruction from 'p' to IP (like the previous phase).
+
+   5. Make the Stack Page (SP):
+      Place 'arg' and NUL at the end (top) of IP, followed by a copy
+      of the original trapframe (like in the previous phase).
+
+   6. In the end, make sure in the final PCB:
+      The trapframe address in the PCB = VM_TF.
+      The eip of the trapframe = VM_START (easier if it's first changed in
+        the old TF, then copy in step 5).
+
+   7. Use GDB at the end of ExecService() to verify all tables are correct.
+      Example: if the PID of the first virtual process being created is 2,
+
+      GDB386> p OS_TT  (should see its addr)
+      GDB386> p pcb[2].page  (should see page numbers such as 0 1 2 3 4)
+      GDB386> p *(OS_TT + 0 * 4)  (should see 0x12...)
+      GDB386> p *(OS_TT + 1 * 4)  (should see 0x13...)
+      ...
+      GDB386> p pcb[2].TT  (should see 0xe00000)
+      GDB386> p *(0xe00000 + 0 * 4)  (should see same # as above 0x12...)
+      GDB386> p *(0xe00000 + 1 * 4)  (should see same # as above 0x13...)
+      ...
+      GDB386> p *(0xe00000 + 128 * 4)  (should see 0xe01000)
+      ...
+
+VM complicatons in ExitService() and WaitchildServices()
+   ExitService():
+      As a child turns 'zombie' and the service is about to end,
+      the MMU should be switched back to use OS_TT since the
+      run_pid is being reset (the child is no longer running).
+   WaitchildService():
+      As the parent process gets the exit code from a VM-running
+      child, the MMU should temporarily be switched to use the
+      child's TT and then switched back. Otherwise, the child's
+      trapframe (its address is virtual) cannot be accessed.
+
